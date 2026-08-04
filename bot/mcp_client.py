@@ -9,6 +9,7 @@ Read-only соединение: без заголовка Mcp-Mode сервер 
 объёма партнёрских вопросов это не узкое место, а простой и надёжный вариант —
 никакого общего состояния между конкурентными сообщениями Telegram.
 """
+import json
 import logging
 from typing import Any
 
@@ -77,6 +78,20 @@ async def list_tools(force_refresh: bool = False) -> list[dict[str, Any]]:
     return tools
 
 
+def _compact_json(text: str) -> str:
+    """Ответы KB — JSON с кириллицей, сериализованный через \\uXXXX-эскейпы:
+    один русский символ занимает 6 байт вместо 1. Проверено вживую: при limit=50
+    у search_content это раздувает ответ до ~95 КБ, наш _truncate (см. llm.py)
+    обрубает его вслепую на первых нескольких результатах — самая релевантная
+    статья может быть за пределами обрубленной части, и модель отвечает по
+    оставшимся, менее подходящим. Перекодируем в обычный UTF-8, чтобы в тот же
+    лимит символов помещалось в разы больше настоящего контента."""
+    try:
+        return json.dumps(json.loads(text), ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError):
+        return text
+
+
 async def call_tool(name: str, arguments: dict[str, Any]) -> str:
     """Вызывает инструмент KB, возвращает текст для LLM (без сырого JSON)."""
     if name in _wrapped_tool_names:
@@ -91,4 +106,4 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> str:
     text = "\n".join(p for p in parts if p) or "(пустой ответ от Базы Знаний)"
     if result.isError:
         return f"Ошибка инструмента {name}: {text}"
-    return text
+    return _compact_json(text)

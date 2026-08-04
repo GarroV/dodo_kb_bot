@@ -1,4 +1,4 @@
-# KB Partners Bot
+# Dodo KB Bot
 
 Telegram-бот-прослойка для доступа партнёров Dodo Pizza (по странам) к внутренней
 Базе Знаний (knowledgebase.dodois.io) — без выдачи партнёрам личных логинов или
@@ -33,7 +33,7 @@ write-инструменты в `tools/list` (проверено вживую) �
 | Бот | Python 3.12, aiogram 3, long polling (без вебхука — конвенция Muspelheim) |
 | LLM | OpenAI gpt-4o-mini, tool-calling |
 | MCP-клиент | официальный `mcp` (Python SDK), Streamable HTTP |
-| Хостинг | Docker на Muspelheim, `C:\projects\kb-partners-bot` |
+| Хостинг | Docker на Muspelheim, `C:\projects\dodo_kb_bot` |
 | Хранилище | нет своей БД — контент живёт во внешней Базе Знаний; единственное, что копится локально, — счётчик транзакций/токенов (`usage.jsonl` в Docker volume) |
 
 Архитектура и цикл tool-calling — по образцу `handleAsk` из проекта Swarm Brain

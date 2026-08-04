@@ -12,7 +12,6 @@ from openai import AsyncOpenAI
 
 import config
 import mcp_client
-from partners import Partner
 
 log = logging.getLogger(__name__)
 
@@ -34,12 +33,10 @@ SYSTEM_PROMPT = (
     "Ты — помощник партнёров Dodo Pizza по внутренней Базе Знаний. "
     "Отвечай на вопрос, используя ТОЛЬКО инструменты Базы Знаний — никогда не отвечай по памяти "
     "и не выдумывай факты.\n\n"
-    "Партнёр: {name}, страна: {country}.\n\n"
     "СТРАТЕГИЯ:\n"
-    "1. Если вопрос без явного упоминания страны/рынка — сначала пробуй искать в контексте страны "
-    "партнёра, но НЕ подставляй молча материалы другой страны, если не нашлось. Если найденное "
-    "явно не по стране партнёра (например нашлось только по России, а партнёр из Сербии) — "
-    "не выдавай это как ответ, а спроси уточнение: по какой стране/рынку партнёр имеет в виду.\n"
+    "1. Страна/рынок партнёра боту заранее не известны. Если вопрос не уточняет страну, а найденное "
+    "по нему в Базе Знаний относится к разным странам — не выбирай одну наугад, спроси партнёра, "
+    "по какой стране/рынку он имеет в виду.\n"
     "2. Если инструмент вернул пусто или ошибку — не сдавайся сразу: попробуй search_content с другой "
     "формулировкой запроса. Если снова пусто — честно скажи, что в Базе Знаний по этому вопросу ничего "
     "не нашлось, и предложи переформулировать.\n"
@@ -54,11 +51,11 @@ def _truncate(text: str) -> str:
     return text[:MAX_TOOL_RESULT_CHARS] + "\n...(обрезано)"
 
 
-async def answer_question(question: str, partner: Partner) -> Answer:
+async def answer_question(question: str) -> Answer:
     tools = await mcp_client.list_tools()
 
     messages: list[dict] = [
-        {"role": "system", "content": SYSTEM_PROMPT.format(name=partner.name, country=partner.country)},
+        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question},
     ]
 

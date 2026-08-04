@@ -18,8 +18,7 @@ log = logging.getLogger(__name__)
 def record(
     *,
     telegram_id: int,
-    partner_name: str,
-    country: str,
+    user_name: str,
     model: str,
     prompt_tokens: int,
     completion_tokens: int,
@@ -30,8 +29,7 @@ def record(
     entry = {
         "ts": time.time(),
         "telegram_id": telegram_id,
-        "partner_name": partner_name,
-        "country": country,
+        "user_name": user_name,
         "model": model,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
@@ -52,12 +50,12 @@ def record(
 def summarize() -> dict[str, Any]:
     path = Path(config.USAGE_FILE)
     if not path.exists():
-        return {"transactions": 0, "failed": 0, "total_tokens": 0, "by_partner": {}}
+        return {"transactions": 0, "failed": 0, "total_tokens": 0, "by_user": {}}
 
     transactions = 0
     failed = 0
     total_tokens = 0
-    by_partner: dict[str, dict[str, int]] = {}
+    by_user: dict[str, dict[str, int]] = {}
 
     with path.open(encoding="utf-8") as f:
         for line in f:
@@ -72,8 +70,8 @@ def summarize() -> dict[str, Any]:
             total_tokens += entry.get("total_tokens", 0)
             if not entry.get("ok", True):
                 failed += 1
-            key = f"{entry.get('partner_name', '?')} ({entry.get('country', '?')})"
-            stat = by_partner.setdefault(key, {"transactions": 0, "total_tokens": 0})
+            key = str(entry.get("user_name", "?"))
+            stat = by_user.setdefault(key, {"transactions": 0, "total_tokens": 0})
             stat["transactions"] += 1
             stat["total_tokens"] += entry.get("total_tokens", 0)
 
@@ -81,5 +79,5 @@ def summarize() -> dict[str, Any]:
         "transactions": transactions,
         "failed": failed,
         "total_tokens": total_tokens,
-        "by_partner": by_partner,
+        "by_user": by_user,
     }

@@ -19,10 +19,7 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 KB_MCP_URL = os.environ.get("KB_MCP_URL", "https://knowledgebase.dodois.io/mcp")
 KB_MCP_TOKEN = _require("KB_MCP_TOKEN")
 
-PARTNERS_FILE = os.environ.get("PARTNERS_FILE", "/app/partners.json")
-
-# Счётчик транзакций/токенов — append-only JSONL, каталог живёт в отдельном
-# Docker-volume (data), не в partners.json.
+# Счётчик транзакций/токенов — append-only JSONL, каталог живёт в отдельном Docker-volume.
 USAGE_FILE = os.environ.get("USAGE_FILE", "/app/data/usage.jsonl")
 
 # Кому отвечает /stats. Не задан — команда молчит для всех (безопасный дефолт).

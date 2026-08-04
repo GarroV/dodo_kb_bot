@@ -2,7 +2,9 @@
 
 Партнёры не получают ни личный логин, ни MCP-токен от Базы Знаний — единственная
 точка входа это этот бот с одним сервисным PAT (см. config.KB_MCP_TOKEN,
-mcp_client.py). Кто вообще может писать боту — список в partners.py.
+mcp_client.py). Доступа к боту по списку нет: отвечает всем, кто пишет в личку
+или упоминает бота в чате, куда его добавили — контроль на уровне того, кто
+добавляет бота в чат, не на уровне бота.
 """
 import asyncio
 import logging
@@ -14,7 +16,6 @@ from aiogram.utils.chat_action import ChatActionSender
 import config
 import group_gate
 import llm
-import partners
 import usage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -23,7 +24,6 @@ log = logging.getLogger(__name__)
 dp = Dispatcher()
 
 TELEGRAM_MESSAGE_LIMIT = 4096
-NO_ACCESS_TEXT = "Доступ закрыт. Обратись к администратору, чтобы тебя добавили в список партнёров."
 
 # Заполняются на старте (см. _on_startup) — нужны гейту группового чата, чтобы
 # узнавать @упоминание себя и reply на своё же сообщение.
@@ -54,11 +54,8 @@ def _split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message) -> None:
-    partner = partners.get_partner(message.from_user.id)
-    if not partner:
-        await message.answer(NO_ACCESS_TEXT)
-        return
-    await message.answer(f"Привет, {partner.name}! Пиши вопрос по Базе Знаний — найду ответ.")
+    name = message.from_user.first_name or message.from_user.username or "партнёр"
+    await message.answer(f"Привет, {name}! Пиши вопрос по Базе Знаний — найду ответ.")
 
 
 @dp.message(Command("stats"))
@@ -73,10 +70,10 @@ async def cmd_stats(message: types.Message) -> None:
         f"Транзакций: {stats['transactions']} (ошибок: {stats['failed']})",
         f"Токенов всего: {stats['total_tokens']}",
     ]
-    if stats["by_partner"]:
+    if stats["by_user"]:
         lines.append("")
-        lines.append("По партнёрам:")
-        by_tokens = sorted(stats["by_partner"].items(), key=lambda kv: -kv[1]["total_tokens"])
+        lines.append("По пользователям:")
+        by_tokens = sorted(stats["by_user"].items(), key=lambda kv: -kv[1]["total_tokens"])
         for name, s in by_tokens:
             lines.append(f"  {name}: {s['transactions']} тр., {s['total_tokens']} ток.")
     await message.answer("\n".join(lines))
@@ -106,18 +103,15 @@ async def handle_question(message: types.Message) -> None:
     if not text:
         return
 
-    partner = partners.get_partner(message.from_user.id)
-    if not partner:
-        await message.answer(NO_ACCESS_TEXT)
-        return
+    user_id = message.from_user.id
+    user_name = message.from_user.first_name or message.from_user.username or str(user_id)
 
     try:
         async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
-            result = await llm.answer_question(text, partner)
+            result = await llm.answer_question(text)
         usage.record(
-            telegram_id=partner.telegram_id,
-            partner_name=partner.name,
-            country=partner.country,
+            telegram_id=user_id,
+            user_name=user_name,
             model=config.OPENAI_MODEL,
             prompt_tokens=result.prompt_tokens,
             completion_tokens=result.completion_tokens,
@@ -127,11 +121,10 @@ async def handle_question(message: types.Message) -> None:
         )
         answer_text = result.text
     except Exception:
-        log.exception("Ошибка обработки вопроса от партнёра %s (%s)", partner.telegram_id, partner.name)
+        log.exception("Ошибка обработки вопроса от %s (%s)", user_id, user_name)
         usage.record(
-            telegram_id=partner.telegram_id,
-            partner_name=partner.name,
-            country=partner.country,
+            telegram_id=user_id,
+            user_name=user_name,
             model=config.OPENAI_MODEL,
             prompt_tokens=0,
             completion_tokens=0,

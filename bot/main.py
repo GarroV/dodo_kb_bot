@@ -96,6 +96,10 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
     user_id = message.from_user.id
     user_name = message.from_user.first_name or message.from_user.username or str(user_id)
 
+    # Поиск по Базе Знаний занимает несколько секунд (несколько раундов
+    # tool-calling) — короткая отбивка, чтобы не выглядело, будто бот завис.
+    await message.answer("Ищу в Базе Знаний…")
+
     try:
         async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
             result = await llm.answer_question(text)

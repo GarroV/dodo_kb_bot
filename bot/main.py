@@ -124,8 +124,11 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
         )
         answer_text = "Произошла ошибка при обращении к Базе Знаний. Попробуй ещё раз чуть позже."
 
+    # Превью ссылок отключено: даже если санитайзер в llm.py что-то пропустит,
+    # разворачиваться в карточку постороннего сайта в чате партнёров нечему.
+    preview_off = types.LinkPreviewOptions(is_disabled=True)
     for chunk in _split_message(answer_text):
-        await message.answer(chunk)
+        await message.answer(chunk, link_preview_options=preview_off)
 
 
 @dp.message(Command("kb_ask"))

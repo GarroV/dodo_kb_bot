@@ -1,0 +1,19 @@
+# Прокси-бот к Базе Знаний Dodo Pizza для партнёров: только Telegram-бот (long polling).
+# Своей БД нет — контент живёт во внешней Базе Знаний (MCP), сюда ничего не сохраняется.
+# Имя compose-проекта = имя папки (или COMPOSE_PROJECT_NAME в .env).
+
+services:
+  bot:
+    build: ./bot
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?задай в .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?задай в .env}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      KB_MCP_URL: ${KB_MCP_URL:-https://knowledgebase.dodois.io/mcp}
+      KB_MCP_TOKEN: ${KB_MCP_TOKEN:?задай в .env}
+      PARTNERS_FILE: /app/partners.json
+    volumes:
+      # ro и вне образа: список партнёров меняется чаще кода — правишь файл и
+      # перезапускаешь контейнер (docker compose restart bot), без пересборки.
+      - ./partners.json:/app/partners.json:ro

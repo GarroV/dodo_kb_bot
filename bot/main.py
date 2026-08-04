@@ -2,9 +2,9 @@
 
 Партнёры не получают ни личный логин, ни MCP-токен от Базы Знаний — единственная
 точка входа это этот бот с одним сервисным PAT (см. config.KB_MCP_TOKEN,
-mcp_client.py). Доступа к боту по списку нет: отвечает всем, кто пишет в личку
-или упоминает бота в чате, куда его добавили — контроль на уровне того, кто
-добавляет бота в чат, не на уровне бота.
+mcp_client.py). Доступа по списку нет, но личка для вопросов закрыта — бот
+отвечает только в групповых чатах, куда его добавили (по @упоминанию или reply).
+Контроль доступа на уровне того, кто добавляет бота в чат, не на уровне бота.
 """
 import asyncio
 import logging
@@ -24,6 +24,10 @@ log = logging.getLogger(__name__)
 dp = Dispatcher()
 
 TELEGRAM_MESSAGE_LIMIT = 4096
+PRIVATE_CLOSED_TEXT = (
+    "Вопросы по Базе Знаний я принимаю только в групповом чате — добавь меня "
+    "в чат с командой и обратись через @упоминание или reply на моё сообщение."
+)
 
 # Заполняются на старте (см. _on_startup) — нужны гейту группового чата, чтобы
 # узнавать @упоминание себя и reply на своё же сообщение.
@@ -54,8 +58,10 @@ def _split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message) -> None:
-    name = message.from_user.first_name or message.from_user.username or "партнёр"
-    await message.answer(f"Привет, {name}! Пиши вопрос по Базе Знаний — найду ответ.")
+    if message.chat.type == "private":
+        await message.answer(PRIVATE_CLOSED_TEXT)
+        return
+    await message.answer("Привет! Обращайся ко мне через @упоминание или reply — найду ответ в Базе Знаний.")
 
 
 @dp.message(Command("stats"))
@@ -86,19 +92,22 @@ async def handle_question(message: types.Message) -> None:
         return
 
     if message.chat.type == "private":
-        text = raw_text
-    else:
-        # Групповой чат: обычный вопрос (не команда — те уже разобраны выше)
-        # обрабатываем только по явному обращению — @тег или reply на бота.
-        is_reply_to_bot = bool(
-            message.reply_to_message
-            and message.reply_to_message.from_user
-            and message.reply_to_message.from_user.id == _bot_id
-        )
-        verdict = group_gate.gate_group_text(raw_text, _bot_username, is_reply_to_bot)
-        if not verdict.process:
-            return
-        text = verdict.text
+        # Личка закрыта для вопросов — единственное, что там разрешено, это
+        # команды (/start, /stats), они разобраны выше и сюда не попадают.
+        await message.answer(PRIVATE_CLOSED_TEXT)
+        return
+
+    # Групповой чат: обычный вопрос (не команда — те уже разобраны выше)
+    # обрабатываем только по явному обращению — @тег или reply на бота.
+    is_reply_to_bot = bool(
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.id == _bot_id
+    )
+    verdict = group_gate.gate_group_text(raw_text, _bot_username, is_reply_to_bot)
+    if not verdict.process:
+        return
+    text = verdict.text
 
     if not text:
         return

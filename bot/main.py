@@ -3,14 +3,16 @@
 Партнёры не получают ни личный логин, ни MCP-токен от Базы Знаний — единственная
 точка входа это этот бот с одним сервисным PAT (см. config.KB_MCP_TOKEN,
 mcp_client.py). Доступа по списку нет, но личка для вопросов закрыта — бот
-отвечает только в групповых чатах, куда его добавили (по @упоминанию или reply).
+отвечает только в групповых чатах, куда его добавили: по @упоминанию, reply
+или командой /kb_ask (команда доходит всегда, даже если у бота включён Group
+Privacy Mode и обычный текст с упоминанием Telegram до бота не доводит).
 Контроль доступа на уровне того, кто добавляет бота в чат, не на уровне бота.
 """
 import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.utils.chat_action import ChatActionSender
 
 import config
@@ -61,7 +63,10 @@ async def cmd_start(message: types.Message) -> None:
     if message.chat.type == "private":
         await message.answer(PRIVATE_CLOSED_TEXT)
         return
-    await message.answer("Привет! Обращайся ко мне через @упоминание или reply — найду ответ в Базе Знаний.")
+    await message.answer(
+        "Привет! Обращайся ко мне через @упоминание, reply или командой "
+        "/kb_ask <вопрос> — найду ответ в Базе Знаний."
+    )
 
 
 @dp.message(Command("stats"))
@@ -85,33 +90,9 @@ async def cmd_stats(message: types.Message) -> None:
     await message.answer("\n".join(lines))
 
 
-@dp.message()
-async def handle_question(message: types.Message) -> None:
-    raw_text = (message.text or "").strip()
-    if not raw_text:
-        return
-
-    if message.chat.type == "private":
-        # Личка закрыта для вопросов — единственное, что там разрешено, это
-        # команды (/start, /stats), они разобраны выше и сюда не попадают.
-        await message.answer(PRIVATE_CLOSED_TEXT)
-        return
-
-    # Групповой чат: обычный вопрос (не команда — те уже разобраны выше)
-    # обрабатываем только по явному обращению — @тег или reply на бота.
-    is_reply_to_bot = bool(
-        message.reply_to_message
-        and message.reply_to_message.from_user
-        and message.reply_to_message.from_user.id == _bot_id
-    )
-    verdict = group_gate.gate_group_text(raw_text, _bot_username, is_reply_to_bot)
-    if not verdict.process:
-        return
-    text = verdict.text
-
-    if not text:
-        return
-
+async def _answer_and_reply(message: types.Message, text: str) -> None:
+    """Прогоняет text через LLM, пишет usage и отвечает в чат — общий хвост
+    для гейта по @упоминанию/reply и для команды /kb_ask."""
     user_id = message.from_user.id
     user_name = message.from_user.first_name or message.from_user.username or str(user_id)
 
@@ -145,6 +126,53 @@ async def handle_question(message: types.Message) -> None:
 
     for chunk in _split_message(answer_text):
         await message.answer(chunk)
+
+
+@dp.message(Command("kb_ask"))
+async def cmd_kb_ask(message: types.Message, command: CommandObject) -> None:
+    # Команда доставляется боту всегда, даже при включённом Group Privacy Mode —
+    # в отличие от обычного текста с @упоминанием (Telegram фильтрует его сам,
+    # до нашего кода, если privacy не выключен явно через @BotFather).
+    if message.chat.type == "private":
+        await message.answer(PRIVATE_CLOSED_TEXT)
+        return
+
+    question = (command.args or "").strip()
+    if not question:
+        await message.answer("Напиши вопрос после команды: /kb_ask как настроить кассу в Додо ИС")
+        return
+
+    await _answer_and_reply(message, question)
+
+
+@dp.message()
+async def handle_question(message: types.Message) -> None:
+    raw_text = (message.text or "").strip()
+    if not raw_text:
+        return
+
+    if message.chat.type == "private":
+        # Личка закрыта для вопросов — единственное, что там разрешено, это
+        # команды (/start, /stats), они разобраны выше и сюда не попадают.
+        await message.answer(PRIVATE_CLOSED_TEXT)
+        return
+
+    # Групповой чат: обычный вопрос (не команда — те уже разобраны выше)
+    # обрабатываем только по явному обращению — @тег или reply на бота.
+    is_reply_to_bot = bool(
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and message.reply_to_message.from_user.id == _bot_id
+    )
+    verdict = group_gate.gate_group_text(raw_text, _bot_username, is_reply_to_bot)
+    if not verdict.process:
+        return
+    text = verdict.text
+
+    if not text:
+        return
+
+    await _answer_and_reply(message, text)
 
 
 async def main() -> None:

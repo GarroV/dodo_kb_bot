@@ -76,9 +76,15 @@ async def answer_question(question: str, partner: Partner) -> str:
             try:
                 args = json.loads(tc.function.arguments or "{}")
                 result = await mcp_client.call_tool(tc.function.name, args)
-            except Exception as exc:  # инструмент KB недоступен / битые аргументы модели
-                result = f"Ошибка вызова инструмента: {exc}"
-            log.info("[tool] %s(%s) -> %s", tc.function.name, tc.function.arguments, result[:200])
+            except Exception:
+                # Полная трассировка — только в серверный лог. В модель (и потенциально
+                # в ответ партнёру) уходит нейтральный текст: сырое исключение может
+                # содержать внутренние детали (URL, структура запроса и т.п.).
+                log.exception("Ошибка вызова инструмента %s", tc.function.name)
+                result = "Инструмент временно недоступен. Попробуй переформулировать запрос."
+            # Контент KB не пишем в лог целиком — это чужие корпоративные данные под
+            # доступом по allowlist'у, а докер-логи читает более широкий круг людей.
+            log.info("[tool] %s args_len=%d result_len=%d", tc.function.name, len(tc.function.arguments or ""), len(result))
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": _truncate(result)})
 
     return "Не удалось получить ответ за отведённое число шагов — попробуй переформулировать вопрос."

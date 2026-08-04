@@ -12,6 +12,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.utils.chat_action import ChatActionSender
 
 import config
+import group_gate
 import llm
 import partners
 import usage
@@ -23,6 +24,22 @@ dp = Dispatcher()
 
 TELEGRAM_MESSAGE_LIMIT = 4096
 NO_ACCESS_TEXT = "Доступ закрыт. Обратись к администратору, чтобы тебя добавили в список партнёров."
+
+# Заполняются на старте (см. _on_startup) — нужны гейту группового чата, чтобы
+# узнавать @упоминание себя и reply на своё же сообщение.
+_bot_username: str | None = None
+_bot_id: int | None = None
+
+
+async def _on_startup(bot: Bot) -> None:
+    global _bot_username, _bot_id
+    me = await bot.get_me()
+    _bot_username = me.username
+    _bot_id = me.id
+    log.info("Бот запущен как @%s (id=%d)", _bot_username, _bot_id)
+
+
+dp.startup.register(_on_startup)
 
 
 def _split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
@@ -67,7 +84,25 @@ async def cmd_stats(message: types.Message) -> None:
 
 @dp.message()
 async def handle_question(message: types.Message) -> None:
-    text = (message.text or "").strip()
+    raw_text = (message.text or "").strip()
+    if not raw_text:
+        return
+
+    if message.chat.type == "private":
+        text = raw_text
+    else:
+        # Групповой чат: обычный вопрос (не команда — те уже разобраны выше)
+        # обрабатываем только по явному обращению — @тег или reply на бота.
+        is_reply_to_bot = bool(
+            message.reply_to_message
+            and message.reply_to_message.from_user
+            and message.reply_to_message.from_user.id == _bot_id
+        )
+        verdict = group_gate.gate_group_text(raw_text, _bot_username, is_reply_to_bot)
+        if not verdict.process:
+            return
+        text = verdict.text
+
     if not text:
         return
 

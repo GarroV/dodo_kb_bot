@@ -8,12 +8,13 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.utils.chat_action import ChatActionSender
 
 import config
 import llm
 import partners
+import usage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -43,6 +44,27 @@ async def cmd_start(message: types.Message) -> None:
     await message.answer(f"Привет, {partner.name}! Пиши вопрос по Базе Знаний — найду ответ.")
 
 
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message) -> None:
+    # Молчим и для чужих, и для случая, когда ADMIN_TELEGRAM_ID вообще не задан —
+    # не подтверждаем и не опровергаем существование команды посторонним.
+    if config.ADMIN_TELEGRAM_ID is None or message.from_user.id != config.ADMIN_TELEGRAM_ID:
+        return
+
+    stats = usage.summarize()
+    lines = [
+        f"Транзакций: {stats['transactions']} (ошибок: {stats['failed']})",
+        f"Токенов всего: {stats['total_tokens']}",
+    ]
+    if stats["by_partner"]:
+        lines.append("")
+        lines.append("По партнёрам:")
+        by_tokens = sorted(stats["by_partner"].items(), key=lambda kv: -kv[1]["total_tokens"])
+        for name, s in by_tokens:
+            lines.append(f"  {name}: {s['transactions']} тр., {s['total_tokens']} ток.")
+    await message.answer("\n".join(lines))
+
+
 @dp.message()
 async def handle_question(message: types.Message) -> None:
     text = (message.text or "").strip()
@@ -56,12 +78,35 @@ async def handle_question(message: types.Message) -> None:
 
     try:
         async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
-            answer = await llm.answer_question(text, partner)
+            result = await llm.answer_question(text, partner)
+        usage.record(
+            telegram_id=partner.telegram_id,
+            partner_name=partner.name,
+            country=partner.country,
+            model=config.OPENAI_MODEL,
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            total_tokens=result.total_tokens,
+            rounds=result.rounds,
+            ok=True,
+        )
+        answer_text = result.text
     except Exception:
         log.exception("Ошибка обработки вопроса от партнёра %s (%s)", partner.telegram_id, partner.name)
-        answer = "Произошла ошибка при обращении к Базе Знаний. Попробуй ещё раз чуть позже."
+        usage.record(
+            telegram_id=partner.telegram_id,
+            partner_name=partner.name,
+            country=partner.country,
+            model=config.OPENAI_MODEL,
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            rounds=0,
+            ok=False,
+        )
+        answer_text = "Произошла ошибка при обращении к Базе Знаний. Попробуй ещё раз чуть позже."
 
-    for chunk in _split_message(answer):
+    for chunk in _split_message(answer_text):
         await message.answer(chunk)
 
 

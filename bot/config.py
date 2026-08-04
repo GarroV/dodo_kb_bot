@@ -20,3 +20,11 @@ KB_MCP_URL = os.environ.get("KB_MCP_URL", "https://knowledgebase.dodois.io/mcp")
 KB_MCP_TOKEN = _require("KB_MCP_TOKEN")
 
 PARTNERS_FILE = os.environ.get("PARTNERS_FILE", "/app/partners.json")
+
+# Счётчик транзакций/токенов — append-only JSONL, каталог живёт в отдельном
+# Docker-volume (data), не в partners.json.
+USAGE_FILE = os.environ.get("USAGE_FILE", "/app/data/usage.jsonl")
+
+# Кому отвечает /stats. Не задан — команда молчит для всех (безопасный дефолт).
+_admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
+ADMIN_TELEGRAM_ID = int(_admin_id) if _admin_id else None

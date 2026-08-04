@@ -13,7 +13,16 @@ services:
       KB_MCP_URL: ${KB_MCP_URL:-https://knowledgebase.dodois.io/mcp}
       KB_MCP_TOKEN: ${KB_MCP_TOKEN:?задай в .env}
       PARTNERS_FILE: /app/partners.json
+      USAGE_FILE: /app/data/usage.jsonl
+      # Кому отвечает /stats (счётчик транзакций/токенов). Не задан — команда молчит всем.
+      ADMIN_TELEGRAM_ID: ${ADMIN_TELEGRAM_ID:-}
     volumes:
       # ro и вне образа: список партнёров меняется чаще кода — правишь файл и
       # перезапускаешь контейнер (docker compose restart bot), без пересборки.
       - ./partners.json:/app/partners.json:ro
+      # Счётчик транзакций/токенов (usage.jsonl) — именованный volume, переживает
+      # docker compose up --build (пересборка образа volume не трогает).
+      - usage_data:/app/data
+
+volumes:
+  usage_data:

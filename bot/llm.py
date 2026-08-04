@@ -6,6 +6,7 @@
 """
 import json
 import logging
+from dataclasses import dataclass
 
 from openai import AsyncOpenAI
 
@@ -14,6 +15,15 @@ import mcp_client
 from partners import Partner
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class Answer:
+    text: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    rounds: int = 0
 
 _client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
@@ -44,7 +54,7 @@ def _truncate(text: str) -> str:
     return text[:MAX_TOOL_RESULT_CHARS] + "\n...(обрезано)"
 
 
-async def answer_question(question: str, partner: Partner) -> str:
+async def answer_question(question: str, partner: Partner) -> Answer:
     tools = await mcp_client.list_tools()
 
     messages: list[dict] = [
@@ -52,7 +62,11 @@ async def answer_question(question: str, partner: Partner) -> str:
         {"role": "user", "content": question},
     ]
 
+    prompt_tokens = completion_tokens = total_tokens = 0
+    rounds_used = 0
+
     for round_no in range(MAX_ROUNDS):
+        rounds_used = round_no + 1
         response = await _client.chat.completions.create(
             model=config.OPENAI_MODEL,
             messages=messages,
@@ -60,11 +74,22 @@ async def answer_question(question: str, partner: Partner) -> str:
             tool_choice="required" if round_no == 0 else "auto",
             max_tokens=1500,
         )
+        if response.usage:
+            prompt_tokens += response.usage.prompt_tokens
+            completion_tokens += response.usage.completion_tokens
+            total_tokens += response.usage.total_tokens
+
         message = response.choices[0].message
         tool_calls = message.tool_calls
 
         if not tool_calls:
-            return message.content or "Не нашёл ответа в Базе Знаний."
+            return Answer(
+                text=message.content or "Не нашёл ответа в Базе Знаний.",
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                rounds=rounds_used,
+            )
 
         messages.append({
             "role": "assistant",
@@ -87,4 +112,10 @@ async def answer_question(question: str, partner: Partner) -> str:
             log.info("[tool] %s args_len=%d result_len=%d", tc.function.name, len(tc.function.arguments or ""), len(result))
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": _truncate(result)})
 
-    return "Не удалось получить ответ за отведённое число шагов — попробуй переформулировать вопрос."
+    return Answer(
+        text="Не удалось получить ответ за отведённое число шагов — попробуй переформулировать вопрос.",
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        rounds=rounds_used,
+    )

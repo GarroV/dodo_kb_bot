@@ -9,7 +9,7 @@ services:
     environment:
       BOT_TOKEN: ${BOT_TOKEN:?задай в .env}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?задай в .env}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       KB_MCP_URL: ${KB_MCP_URL:-https://knowledgebase.dodois.io/mcp}
       KB_MCP_TOKEN: ${KB_MCP_TOKEN:?задай в .env}
       USAGE_FILE: /app/data/usage.jsonl

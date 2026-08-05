@@ -7,7 +7,7 @@ MCP-токенов.
 ## Что это и зачем
 
 Партнёр пишет вопрос боту на человеческом языке. Бот прогоняет вопрос через LLM
-(gpt-5.6-terra) с доступом к read-инструментам MCP-сервера Базы Знаний
+(gpt-5.6-luna) с доступом к read-инструментам MCP-сервера Базы Знаний
 (`search_content`, `get_content`, `get_space_content`, `get_announcements`,
 `get_spaces`, `current_user`, `get_link_templates`, `preview_content`) —
 LLM сама решает, идти ли в базу, какой инструмент вызвать и как сформулировать
@@ -40,7 +40,7 @@ write-инструменты в `tools/list` (проверено вживую) �
 | Слой | Технология |
 |---|---|
 | Бот | Python 3.12, aiogram 3, long polling (без вебхука — конвенция Muspelheim) |
-| LLM | OpenAI gpt-5.6-terra, tool-calling (модель задаётся `OPENAI_MODEL`) |
+| LLM | OpenAI gpt-5.6-luna, tool-calling (модель задаётся `OPENAI_MODEL`) |
 | MCP-клиент | официальный `mcp` (Python SDK), Streamable HTTP |
 | Хостинг | Docker на Muspelheim, `C:\projects\dodo_kb_bot` |
 | Хранилище | нет своей БД — контент живёт во внешней Базе Знаний; единственное, что копится локально, — счётчик транзакций/токенов (`usage.jsonl` в Docker volume) |

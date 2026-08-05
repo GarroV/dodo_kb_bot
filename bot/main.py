@@ -26,10 +26,40 @@ log = logging.getLogger(__name__)
 dp = Dispatcher()
 
 TELEGRAM_MESSAGE_LIMIT = 4096
-PRIVATE_CLOSED_TEXT = (
-    "Вопросы по Базе Знаний я принимаю только в групповом чате — добавь меня "
-    "в чат с командой и обратись через @упоминание или reply на моё сообщение."
-)
+
+# Партнёры международные, поэтому свои строки бот тоже подаёт на двух языках.
+# Определение языка — одно на весь проект, в llm.lang_of (кириллица -> русский,
+# для сообщений без текста — по language_code профиля Telegram).
+TEXTS = {
+    "private_closed": {
+        "ru": "Вопросы по Базе Знаний я принимаю только в групповом чате — добавь меня "
+              "в чат с командой и обратись через @упоминание, reply или команду /kb_ask.",
+        "en": "I only take Knowledge Base questions in a group chat — add me to your team's "
+              "chat and reach me with an @mention, a reply, or the /kb_ask command.",
+    },
+    "greeting": {
+        "ru": "Привет! Обращайся ко мне через @упоминание, reply или командой "
+              "/kb_ask <вопрос> — найду ответ в Базе Знаний.",
+        "en": "Hi! Reach me with an @mention, a reply, or /kb_ask <question> — "
+              "I'll find the answer in the Knowledge Base.",
+    },
+    "searching": {
+        "ru": "Ищу в Базе Знаний…",
+        "en": "Searching the Knowledge Base…",
+    },
+    "kb_ask_empty": {
+        "ru": "Напиши вопрос после команды: /kb_ask как настроить кассу в Додо ИС",
+        "en": "Add your question after the command: /kb_ask how to set up a cash register in Dodo IS",
+    },
+    "error": {
+        "ru": "Произошла ошибка при обращении к Базе Знаний. Попробуй ещё раз чуть позже.",
+        "en": "Something went wrong while querying the Knowledge Base. Please try again a bit later.",
+    },
+}
+
+
+def _t(key: str, lang: str) -> str:
+    return TEXTS[key][lang]
 
 # Заполняются на старте (см. _on_startup) — нужны гейту группового чата, чтобы
 # узнавать @упоминание себя и reply на своё же сообщение.
@@ -60,13 +90,11 @@ def _split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
 
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message) -> None:
+    lang = llm.lang_of(None, message.from_user.language_code)
     if message.chat.type == "private":
-        await message.answer(PRIVATE_CLOSED_TEXT)
+        await message.answer(_t("private_closed", lang))
         return
-    await message.answer(
-        "Привет! Обращайся ко мне через @упоминание, reply или командой "
-        "/kb_ask <вопрос> — найду ответ в Базе Знаний."
-    )
+    await message.answer(_t("greeting", lang))
 
 
 @dp.message(Command("stats"))
@@ -105,14 +133,15 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
     для гейта по @упоминанию/reply и для команды /kb_ask."""
     user_id = message.from_user.id
     user_name = message.from_user.first_name or message.from_user.username or str(user_id)
+    lang = llm.lang_of(text, message.from_user.language_code)
 
     # Поиск по Базе Знаний занимает несколько секунд (несколько раундов
     # tool-calling) — короткая отбивка, чтобы не выглядело, будто бот завис.
-    await message.answer("Ищу в Базе Знаний…")
+    await message.answer(_t("searching", lang))
 
     try:
         async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
-            result = await llm.answer_question(text)
+            result = await llm.answer_question(text, lang)
         usage.record(
             telegram_id=user_id,
             user_name=user_name,
@@ -137,7 +166,7 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
             rounds=0,
             ok=False,
         )
-        answer_text = "Произошла ошибка при обращении к Базе Знаний. Попробуй ещё раз чуть позже."
+        answer_text = _t("error", lang)
 
     # Превью ссылок отключено: даже если санитайзер в llm.py что-то пропустит,
     # разворачиваться в карточку постороннего сайта в чате партнёров нечему.
@@ -151,13 +180,15 @@ async def cmd_kb_ask(message: types.Message, command: CommandObject) -> None:
     # Команда доставляется боту всегда, даже при включённом Group Privacy Mode —
     # в отличие от обычного текста с @упоминанием (Telegram фильтрует его сам,
     # до нашего кода, если privacy не выключен явно через @BotFather).
+    question = (command.args or "").strip()
+    lang = llm.lang_of(question, message.from_user.language_code)
+
     if message.chat.type == "private":
-        await message.answer(PRIVATE_CLOSED_TEXT)
+        await message.answer(_t("private_closed", lang))
         return
 
-    question = (command.args or "").strip()
     if not question:
-        await message.answer("Напиши вопрос после команды: /kb_ask как настроить кассу в Додо ИС")
+        await message.answer(_t("kb_ask_empty", lang))
         return
 
     await _answer_and_reply(message, question)
@@ -172,7 +203,7 @@ async def handle_question(message: types.Message) -> None:
     if message.chat.type == "private":
         # Личка закрыта для вопросов — единственное, что там разрешено, это
         # команды (/start, /stats), они разобраны выше и сюда не попадают.
-        await message.answer(PRIVATE_CLOSED_TEXT)
+        await message.answer(_t("private_closed", llm.lang_of(raw_text, message.from_user.language_code)))
         return
 
     # Групповой чат: обычный вопрос (не команда — те уже разобраны выше)

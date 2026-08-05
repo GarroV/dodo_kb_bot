@@ -62,6 +62,34 @@ def _sanitize_links(text: str, tool_output: str = "") -> str:
     return re.sub(r"[ \t]{2,}", " ", text)
 
 
+_CYRILLIC_RE = re.compile(r"[а-яёА-ЯЁ]")
+
+
+def lang_of(text: str | None, fallback_code: str | None = None) -> str:
+    """Язык ответа: кириллица в вопросе -> ru, иначе en. Для сообщений без текста
+    (например /start) — по language_code профиля Telegram."""
+    if text and _CYRILLIC_RE.search(text):
+        return "ru"
+    if text:
+        return "en"
+    return "ru" if (fallback_code or "").startswith("ru") else "en"
+
+
+# Подписи списка статей приводим в порядок кодом, а не уговорами: модель
+# устойчиво переводит сам текст ответа, но метку «Ссылка:» в английском ответе
+# оставляла русской даже при явном запрете смешивать языки.
+_LABELS = {
+    "en": [("Статьи:", "Articles:"), ("Ссылка:", "Link:"), ("Источники:", "Sources:")],
+    "ru": [("Articles:", "Статьи:"), ("Link:", "Ссылка:"), ("Sources:", "Источники:")],
+}
+
+
+def _normalize_labels(text: str, lang: str) -> str:
+    for src, dst in _LABELS.get(lang, []):
+        text = re.sub(rf"(?m)^(\s*){re.escape(src)}", rf"\1{dst}", text)
+    return text
+
+
 _MD_HEADER_RE = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
 _MD_EMPHASIS_RE = re.compile(r"\*{1,3}|__|`")
 
@@ -155,12 +183,16 @@ SYSTEM_PROMPT = (
     "1. Ведущий блок — 2–4 строки по правилу масштаба выше. Если партнёр просто просит материалы по "
     "теме — этот блок пропусти. Лимит в 2–4 строки соблюдай: длинный нумерованный список шагов в "
     "ведущем блоке — ошибка.\n"
-    "2. Затем строка «Статьи:» и по каждой статье ТРИ элемента, каждая статья одним блоком:\n"
+    "2. Затем заголовок списка статей и по каждой статье ТРИ элемента, каждая статья одним блоком:\n"
     "   Название статьи (как в Базе Знаний, не переводи и не переписывай)\n"
     "   Одно-два предложения: что конкретно внутри и для какой страны/рынка, если это указано.\n"
-    "   Ссылка: https://knowledgebase.dodois.io/next/article/{spaceId}/{articleId}\n"
-    "   spaceId и articleId бери из результата search_content. Статьи, которые не читал через "
-    "get_content, в список не включай. НИКОГДА не придумывай другой домен или адрес.\n\n"
+    "   Отдельная строка со ссылкой на статью, с подписью на языке ответа.\n"
+    "   Подписи для русского ответа: заголовок списка «Статьи:», подпись ссылки «Ссылка: <url>».\n"
+    "   Подписи для английского ответа: заголовок списка «Articles:», подпись ссылки «Link: <url>».\n"
+    "   Смешивать нельзя: если заголовок «Articles:», то и подпись обязана быть «Link:», а не «Ссылка:».\n"
+    "   Сам url всегда https://knowledgebase.dodois.io/next/article/{spaceId}/{articleId}; spaceId и "
+    "articleId бери из результата search_content. Статьи, которые не читал через get_content, в "
+    "список не включай. НИКОГДА не придумывай другой домен или адрес.\n\n"
     "ЗАПРЕЩЕНО:\n"
     "- Markdown-разметка: никаких ###, **, __, `` — Telegram их не рендерит, партнёр увидит символы "
     "как есть. Пиши обычным текстом, ссылки — голым адресом.\n"
@@ -169,7 +201,15 @@ SYSTEM_PROMPT = (
     "Общие рассуждения вместо содержания статьи — худшая ошибка.\n"
     "- Пустые фразы в конце («дайте знать, если нужно больше информации») и обещания сделать то, что "
     "должно быть уже сделано в этом же ответе.\n\n"
-    "Отвечай человеческим языком, на языке вопроса партнёра, без сырого JSON и служебных полей."
+    "ЯЗЫК ОТВЕТА:\n"
+    "- Отвечай на языке вопроса партнёра. Вопрос по-русски — весь ответ по-русски; вопрос "
+    "по-английски — весь ответ по-английски.\n"
+    "- Служебные подписи тоже на языке вопроса, а не всегда по-русски: для русского вопроса "
+    "«Статьи:» и «Ссылка:», для английского — «Articles:» и «Link:». Смешивать языки в одном "
+    "ответе нельзя.\n"
+    "- Названия статей не переводи: они приводятся так, как записаны в Базе Знаний (в ней есть и "
+    "русские, и английские статьи), даже если остальной ответ на другом языке.\n\n"
+    "Отвечай человеческим языком, без сырого JSON и служебных полей."
 )
 
 
@@ -188,12 +228,21 @@ def _truncate(text: str, limit: int = MAX_TOOL_RESULT_CHARS) -> str:
     return text[:limit] + "\n...(обрезано)"
 
 
-async def answer_question(question: str) -> Answer:
+async def answer_question(question: str, lang: str | None = None) -> Answer:
     tools = await mcp_client.list_tools()
+    lang = lang or lang_of(question)
+
+    # Язык кладём в сообщение пользователя, а не в системный промпт: системный
+    # промпт — это кэшируемый префикс, и его вариативность ломала бы кэш.
+    lang_hint = (
+        "\n\n(Ответ полностью на русском языке, включая подписи «Статьи:» и «Ссылка:».)"
+        if lang == "ru"
+        else "\n\n(Reply entirely in English, including the «Articles:» and «Link:» labels.)"
+    )
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question},
+        {"role": "user", "content": question + lang_hint},
     ]
     # Всё, что вернули инструменты за диалог — по нему _sanitize_links отличает
     # ссылку из статьи от выдуманной моделью.
@@ -228,8 +277,13 @@ async def answer_question(question: str) -> Answer:
 
         if not tool_calls:
             return Answer(
-                text=_to_plain_text(
-                    _sanitize_links(message.content or "Не нашёл ответа в Базе Знаний.", "\n".join(tool_outputs))
+                text=_normalize_labels(
+                    _to_plain_text(
+                        _sanitize_links(
+                            message.content or "Не нашёл ответа в Базе Знаний.", "\n".join(tool_outputs)
+                        )
+                    ),
+                    lang,
                 ),
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,

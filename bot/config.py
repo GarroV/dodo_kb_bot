@@ -12,7 +12,7 @@ def _require(name: str) -> str:
 BOT_TOKEN = _require("BOT_TOKEN")
 
 OPENAI_API_KEY = _require("OPENAI_API_KEY")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.6-terra")
 
 # Read-only соединение с MCP Базы Знаний: без заголовка Mcp-Mode сервер отдаёт
 # только read-инструменты (см. bot/mcp_client.py).

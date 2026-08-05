@@ -27,27 +27,53 @@ _ALLOWED_LINK_PREFIX = "https://knowledgebase.dodois.io/"
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")
 _BARE_URL_RE = re.compile(r"https?://[^\s)]+")
 _URL_TAIL_TRIM = ".,;:!?)»\"'"
+_SCHEME_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 
-def _is_allowed_link(url: str, tool_output: str) -> bool:
+def _norm_url(url: str) -> str:
+    """Схема и хвостовой слеш не считаются различием: в статьях ссылка может
+    быть записана как http://tvboards.dodois.io/, а модель напишет
+    https://tvboards.dodois.io — это одна и та же ссылка, и вырезать её нельзя."""
+    return _SCHEME_RE.sub("", url.rstrip(_URL_TAIL_TRIM).rstrip("/")).lower()
+
+
+def _is_allowed_link(url: str, tool_output_lower: str) -> bool:
     if url.startswith(_ALLOWED_LINK_PREFIX):
         return True
-    return url.rstrip(_URL_TAIL_TRIM) in tool_output
+    return _norm_url(url) in tool_output_lower
 
 
 def _sanitize_links(text: str, tool_output: str = "") -> str:
+    tool_output_lower = tool_output.lower()
+
     def _md_sub(m: re.Match) -> str:
         label, url = m.group(1), m.group(2)
-        return m.group(0) if _is_allowed_link(url, tool_output) else label
+        # Markdown-разметку Telegram не рендерит (parse_mode не задан намеренно —
+        # см. _to_plain_text), поэтому ссылку разворачиваем в «текст — url».
+        return f"{label} — {url}" if _is_allowed_link(url, tool_output_lower) else label
 
     text = _MD_LINK_RE.sub(_md_sub, text)
 
     def _bare_sub(m: re.Match) -> str:
         url = m.group(0)
-        return url if _is_allowed_link(url, tool_output) else ""
+        return url if _is_allowed_link(url, tool_output_lower) else ""
 
     text = _BARE_URL_RE.sub(_bare_sub, text)
     return re.sub(r"[ \t]{2,}", " ", text)
+
+
+_MD_HEADER_RE = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
+_MD_EMPHASIS_RE = re.compile(r"\*{1,3}|__|`")
+
+
+def _to_plain_text(text: str) -> str:
+    """Telegram отправляем без parse_mode: MarkdownV2 требует экранирования почти
+    всей пунктуации (любой промах модели — 400 от API), а legacy Markdown не
+    понимает ни ###, ни **. Поэтому разметку не рендерим, а вычищаем — голые
+    ссылки Telegram делает кликабельными сам."""
+    text = _MD_HEADER_RE.sub("", text)
+    text = _MD_EMPHASIS_RE.sub("", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 @dataclass
@@ -103,19 +129,25 @@ SYSTEM_PROMPT = (
     "пометив, к какой стране они относятся и что это не про запрошенную.\n"
     "- Если страна в вопросе не названа — используй все релевантные материалы, указывая у каждого "
     "пункта, к какой стране/рынку он относится.\n\n"
-    "ФОРМАТ ОТВЕТА:\n"
-    "- Отвечай на заданный вопрос по фактам из прочитанных статей: конкретные шаги, значения, "
-    "названия пунктов меню — так, как написано в статье.\n"
-    "- НИКАКИХ советов и рекомендаций от себя. Не добавляй пункты вроде «регулярно проверяйте», "
-    "«убедитесь, что всё настроено правильно», «изучите логику» — если этого нет в тексте статьи, "
-    "этого не должно быть в ответе. Общие рассуждения вместо содержания статьи — худшая ошибка.\n"
-    "- Если партнёр просит именно список статей — дай список статей, а не пересказ шагов.\n"
-    "- В конце отдельным блоком, ровно строкой «Источники:», перечисли по одной ссылке на строку на "
-    "реально прочитанные статьи: https://knowledgebase.dodois.io/next/article/{spaceId}/{articleId}, "
-    "подставив настоящие spaceId и articleId из результата search_content. Не давай ссылок на "
-    "статьи, которые не читал через get_content. НИКОГДА не придумывай другой домен или адрес.\n"
-    "- Пиши по делу. Не добавляй пустых фраз вроде «дайте знать, если нужно больше информации» и не "
-    "обещай сделать то, что должно быть уже сделано в этом же ответе.\n\n"
+    "ФОРМАТ ОТВЕТА — СТРОГО ТАКОЙ:\n"
+    "Главное в ответе — сами статьи: название, о чём она, ссылка. Структура:\n"
+    "1. Если вопрос «как сделать X» — сначала 2–4 строки сути по фактам из статей (конкретные шаги, "
+    "значения, названия пунктов меню — так, как написано в статье). Если партнёр просто просит "
+    "материалы по теме — этот блок пропусти.\n"
+    "2. Затем строка «Статьи:» и по каждой статье ТРИ элемента, каждая статья одним блоком:\n"
+    "   Название статьи (как в Базе Знаний, не переводи и не переписывай)\n"
+    "   Одно-два предложения: что конкретно внутри и для какой страны/рынка, если это указано.\n"
+    "   Ссылка: https://knowledgebase.dodois.io/next/article/{spaceId}/{articleId}\n"
+    "   spaceId и articleId бери из результата search_content. Статьи, которые не читал через "
+    "get_content, в список не включай. НИКОГДА не придумывай другой домен или адрес.\n\n"
+    "ЗАПРЕЩЕНО:\n"
+    "- Markdown-разметка: никаких ###, **, __, `` — Telegram их не рендерит, партнёр увидит символы "
+    "как есть. Пиши обычным текстом, ссылки — голым адресом.\n"
+    "- Советы и рекомендации от себя: «регулярно проверяйте», «убедитесь, что всё настроено "
+    "правильно», «изучите логику». Если этого нет в тексте статьи — этого не должно быть в ответе. "
+    "Общие рассуждения вместо содержания статьи — худшая ошибка.\n"
+    "- Пустые фразы в конце («дайте знать, если нужно больше информации») и обещания сделать то, что "
+    "должно быть уже сделано в этом же ответе.\n\n"
     "Отвечай человеческим языком, на языке вопроса партнёра, без сырого JSON и служебных полей."
 )
 
@@ -173,7 +205,9 @@ async def answer_question(question: str) -> Answer:
 
         if not tool_calls:
             return Answer(
-                text=_sanitize_links(message.content or "Не нашёл ответа в Базе Знаний.", "\n".join(tool_outputs)),
+                text=_to_plain_text(
+                    _sanitize_links(message.content or "Не нашёл ответа в Базе Знаний.", "\n".join(tool_outputs))
+                ),
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,

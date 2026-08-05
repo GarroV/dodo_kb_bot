@@ -74,19 +74,29 @@ async def cmd_stats(message: types.Message) -> None:
     # Молчим и для чужих, и для случая, когда ADMIN_TELEGRAM_ID вообще не задан —
     # не подтверждаем и не опровергаем существование команды посторонним.
     if config.ADMIN_TELEGRAM_ID is None or message.from_user.id != config.ADMIN_TELEGRAM_ID:
+        # Логируем отказ: иначе «/stats молчит» неотличимо от «команда не дошла».
+        log.info(
+            "[stats] отказ: from_id=%s admin_id=%s chat=%s",
+            message.from_user.id, config.ADMIN_TELEGRAM_ID, message.chat.type,
+        )
         return
+    log.info("[stats] выдаю сводку для from_id=%s", message.from_user.id)
 
     stats = usage.summarize()
     lines = [
         f"Транзакций: {stats['transactions']} (ошибок: {stats['failed']})",
-        f"Токенов всего: {stats['total_tokens']}",
+        f"Токенов всего: {stats['total_tokens']} (из кэша: {stats['cached_tokens']})",
+        f"Стоимость: ${stats['cost_usd']:.4f}",
+        f"Модель сейчас: {config.OPENAI_MODEL}",
     ]
     if stats["by_user"]:
         lines.append("")
         lines.append("По пользователям:")
         by_tokens = sorted(stats["by_user"].items(), key=lambda kv: -kv[1]["total_tokens"])
         for name, s in by_tokens:
-            lines.append(f"  {name}: {s['transactions']} тр., {s['total_tokens']} ток.")
+            lines.append(
+                f"  {name}: {s['transactions']} тр., {s['total_tokens']} ток., ${s['cost_usd']:.4f}"
+            )
     await message.answer("\n".join(lines))
 
 
@@ -112,6 +122,7 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
             total_tokens=result.total_tokens,
             rounds=result.rounds,
             ok=True,
+            cached_prompt_tokens=result.cached_prompt_tokens,
         )
         answer_text = result.text
     except Exception:

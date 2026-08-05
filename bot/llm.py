@@ -83,6 +83,10 @@ class Answer:
     completion_tokens: int = 0
     total_tokens: int = 0
     rounds: int = 0
+    # Часть prompt_tokens, пришедшая из кэша промпта. Считать стоимость без этого
+    # числа бессмысленно: кэшированный вход у gpt-5.6-luna стоит $0.02 за 1M
+    # против $0.20 — то есть в 10 раз дешевле обычного.
+    cached_prompt_tokens: int = 0
 
 _client = AsyncOpenAI(api_key=config.OPENAI_API_KEY)
 
@@ -191,7 +195,7 @@ async def answer_question(question: str) -> Answer:
     # ссылку из статьи от выдуманной моделью.
     tool_outputs: list[str] = []
 
-    prompt_tokens = completion_tokens = total_tokens = 0
+    prompt_tokens = completion_tokens = total_tokens = cached_prompt_tokens = 0
     rounds_used = 0
 
     for round_no in range(MAX_ROUNDS):
@@ -212,6 +216,8 @@ async def answer_question(question: str) -> Answer:
             prompt_tokens += response.usage.prompt_tokens
             completion_tokens += response.usage.completion_tokens
             total_tokens += response.usage.total_tokens
+            details = getattr(response.usage, "prompt_tokens_details", None)
+            cached_prompt_tokens += getattr(details, "cached_tokens", 0) or 0
 
         message = response.choices[0].message
         tool_calls = message.tool_calls
@@ -225,6 +231,7 @@ async def answer_question(question: str) -> Answer:
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
                 rounds=rounds_used,
+                cached_prompt_tokens=cached_prompt_tokens,
             )
 
         messages.append({
@@ -259,4 +266,5 @@ async def answer_question(question: str) -> Answer:
         completion_tokens=completion_tokens,
         total_tokens=total_tokens,
         rounds=rounds_used,
+        cached_prompt_tokens=cached_prompt_tokens,
     )

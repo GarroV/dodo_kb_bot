@@ -78,6 +78,24 @@ async def list_tools(force_refresh: bool = False) -> list[dict[str, Any]]:
     return tools
 
 
+# Поля ответов KB, которые модели не нужны ни для выбора статьи, ни для ответа,
+# но платятся как входные токены каждый раунд. Замер на search_content(limit=10):
+# themes — 2373 символа из 8086, то есть 29% ответа уходило на UUID'ы тем.
+_NOISE_FIELDS = frozenset({
+    "themes", "authors", "status", "updatedAt", "createdAt", "publishedAt",
+    "isWatermarksEnabled", "isCommentsEnabled", "isDarkMode", "fidelity",
+    "rights", "translationType", "translations",
+})
+
+
+def _prune(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: _prune(v) for k, v in obj.items() if k not in _NOISE_FIELDS}
+    if isinstance(obj, list):
+        return [_prune(v) for v in obj]
+    return obj
+
+
 def _compact_json(text: str) -> str:
     """Ответы KB — JSON с кириллицей, сериализованный через \\uXXXX-эскейпы:
     один русский символ занимает 6 байт вместо 1. Проверено вживую: при limit=50
@@ -85,9 +103,10 @@ def _compact_json(text: str) -> str:
     обрубает его вслепую на первых нескольких результатах — самая релевантная
     статья может быть за пределами обрубленной части, и модель отвечает по
     оставшимся, менее подходящим. Перекодируем в обычный UTF-8, чтобы в тот же
-    лимит символов помещалось в разы больше настоящего контента."""
+    лимит символов помещалось в разы больше настоящего контента, и попутно
+    выбрасываем служебные поля (_NOISE_FIELDS) — они только жгут токены."""
     try:
-        return json.dumps(json.loads(text), ensure_ascii=False)
+        return json.dumps(_prune(json.loads(text)), ensure_ascii=False)
     except (json.JSONDecodeError, TypeError):
         return text
 

@@ -59,6 +59,9 @@ docker compose up -d --build
 docker compose logs -f bot
 ```
 
+Инструкция для партнёров (как пользоваться ботом, ru + en) —
+[docs/PARTNER_GUIDE.md](docs/PARTNER_GUIDE.md).
+
 ## Язык ответа
 
 Ответ идёт на языке вопроса: кириллица в вопросе — отвечаем по-русски, иначе

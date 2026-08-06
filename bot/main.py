@@ -60,8 +60,9 @@ TEXTS = {
             "Отвечает на языке вопроса и только по Базе Знаний — если материала нет, скажет прямо.\n\n"
             "Советы: один конкретный вопрос за раз; называйте страну («в Сербии»); "
             "каждый вопрос формулируйте целиком — предыдущие сообщения бот не помнит.\n\n"
-            "Бот не читает сообщения группы и реагирует только на команду. По этой же причине "
-            "не срабатывает упоминание через собаку — обращайтесь через /kb_ask."
+            "Бот не читает переписку в группе — он видит только обращения к нему: команду "
+            "/kb_ask и ответы (реплаи) на его собственные сообщения. Упоминание через собаку "
+            "он не получает вообще, поэтому на него не отвечает."
         ),
         "en": (
             "Knowledge Base bot (@dodo_kb_bot) — answers questions from the Dodo Knowledge Base.\n\n"
@@ -72,8 +73,9 @@ TEXTS = {
             "if there is nothing on the topic, it says so.\n\n"
             "Tips: ask one specific question at a time; name the country (\"in Serbia\"); "
             "make each question self-contained — the bot doesn't remember previous messages.\n\n"
-            "The bot does not read the group's messages and only reacts to the command. For the "
-            "same reason an @mention does not work — use /kb_ask."
+            "The bot does not read the group conversation — it only sees messages addressed to "
+            "it: the /kb_ask command and replies to its own messages. An @mention never reaches "
+            "it, which is why it stays silent on those."
         ),
     },
     "error": {

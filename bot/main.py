@@ -59,7 +59,9 @@ TEXTS = {
             "Что придёт: короткий ответ по существу и ссылки на статьи, за 10–20 секунд. "
             "Отвечает на языке вопроса и только по Базе Знаний — если материала нет, скажет прямо.\n\n"
             "Советы: один конкретный вопрос за раз; называйте страну («в Сербии»); "
-            "каждый вопрос формулируйте целиком — предыдущие сообщения бот не помнит."
+            "каждый вопрос формулируйте целиком — предыдущие сообщения бот не помнит.\n\n"
+            "Бот не читает сообщения группы и реагирует только на команду. По этой же причине "
+            "не срабатывает упоминание через собаку — обращайтесь через /kb_ask."
         ),
         "en": (
             "Knowledge Base bot (@dodo_kb_bot) — answers questions from the Dodo Knowledge Base.\n\n"
@@ -69,7 +71,9 @@ TEXTS = {
             "It replies in the language of your question and only from the Knowledge Base — "
             "if there is nothing on the topic, it says so.\n\n"
             "Tips: ask one specific question at a time; name the country (\"in Serbia\"); "
-            "make each question self-contained — the bot doesn't remember previous messages."
+            "make each question self-contained — the bot doesn't remember previous messages.\n\n"
+            "The bot does not read the group's messages and only reacts to the command. For the "
+            "same reason an @mention does not work — use /kb_ask."
         ),
     },
     "error": {

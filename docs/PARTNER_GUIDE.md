@@ -17,6 +17,9 @@
 
 Советы: один конкретный вопрос за раз; называйте страну («в Сербии»); каждый
 вопрос формулируйте целиком — предыдущие сообщения бот не помнит.
+
+Бот не читает сообщения группы и реагирует только на команду. По этой же
+причине не срабатывает упоминание через собаку — обращайтесь через /kb_ask.
 ```
 
 ## English version
@@ -34,6 +37,9 @@ Base — if there is nothing on the topic, it says so.
 
 Tips: ask one specific question at a time; name the country ("in Serbia"); make
 each question self-contained — the bot doesn't remember previous messages.
+
+The bot does not read the group's messages and only reacts to the command. For
+the same reason an @mention does not work — use /kb_ask.
 ```
 
 Язык выбирается по `language_code` профиля Telegram того, кто вызвал команду.

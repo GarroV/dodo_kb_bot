@@ -51,6 +51,31 @@ TEXTS = {
         "ru": "Напиши вопрос после команды: /kb_ask как настроить кассу в Додо ИС",
         "en": "Add your question after the command: /kb_ask how to set up a cash register in Dodo IS",
     },
+    "info": {
+        "ru": (
+            "Dodo KB — бот по Базе Знаний Dodo.\n\n"
+            "Как спросить (в этом чате):\n"
+            "• @dodo_kb_bot как настроить кассу ресторана\n"
+            "• /kb_ask как настроить кассу ресторана\n"
+            "• реплай на любое сообщение бота\n\n"
+            "Что придёт: короткий ответ по существу и ссылки на статьи, за 10–20 секунд. "
+            "Отвечает на языке вопроса и только по Базе Знаний — если материала нет, скажет прямо.\n\n"
+            "Советы: один конкретный вопрос за раз; называйте страну («в Сербии»); "
+            "каждый вопрос формулируйте целиком — предыдущие сообщения бот не помнит."
+        ),
+        "en": (
+            "Dodo KB — the Dodo Knowledge Base bot.\n\n"
+            "How to ask (in this chat):\n"
+            "• @dodo_kb_bot how long can dough balls be stored?\n"
+            "• /kb_ask how long can dough balls be stored?\n"
+            "• reply to any message from the bot\n\n"
+            "What you get: a short answer plus links to the source articles, in 10–20 seconds. "
+            "It replies in the language of your question and only from the Knowledge Base — "
+            "if there is nothing on the topic, it says so.\n\n"
+            "Tips: ask one specific question at a time; name the country (\"in Serbia\"); "
+            "make each question self-contained — the bot doesn't remember previous messages."
+        ),
+    },
     "error": {
         "ru": "Произошла ошибка при обращении к Базе Знаний. Попробуй ещё раз чуть позже.",
         "en": "Something went wrong while querying the Knowledge Base. Please try again a bit later.",
@@ -74,6 +99,13 @@ async def _on_startup(bot: Bot) -> None:
     _bot_id = me.id
     log.info("Бот запущен как @%s (id=%d)", _bot_username, _bot_id)
 
+    # Меню команд в интерфейсе Telegram: партнёр видит подсказку, набирая «/».
+    # /stats не публикуем — она только для админа.
+    await bot.set_my_commands([
+        types.BotCommand(command="kb_ask", description="Спросить Базу Знаний / Ask the Knowledge Base"),
+        types.BotCommand(command="kb_info", description="Как пользоваться ботом / How to use the bot"),
+    ])
+
 
 dp.startup.register(_on_startup)
 
@@ -95,6 +127,12 @@ async def cmd_start(message: types.Message) -> None:
         await message.answer(_t("private_closed", lang))
         return
     await message.answer(_t("greeting", lang))
+
+
+@dp.message(Command("kb_info"))
+async def cmd_kb_info(message: types.Message) -> None:
+    # Справка полезна и в личке, и в группе — в отличие от вопросов, её не гейтим.
+    await message.answer(_t("info", llm.lang_of(None, message.from_user.language_code)))
 
 
 @dp.message(Command("stats"))

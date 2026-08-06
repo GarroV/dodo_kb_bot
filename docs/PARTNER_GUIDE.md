@@ -15,9 +15,12 @@
 /kb_ask как настроить кассу ресторана
 ```
 
-Также можно упомянуть бота (`@dodo_kb_bot ваш вопрос`) или ответить реплаем на
-его сообщение. Если бот на упоминание не отвечает — используйте `/kb_ask`,
-она работает всегда.
+Ещё можно **ответить реплаем** на любое сообщение бота — тогда команду писать
+не нужно, просто задайте вопрос в реплае.
+
+Упоминание в тексте (`@dodo_kb_bot ваш вопрос`) работает не во всех чатах: это
+зависит от настройки бота в конкретном чате. Если на упоминание он молчит —
+используйте `/kb_ask` или реплай.
 
 Ответ занимает 10–20 секунд: сначала придёт «Ищу в Базе Знаний…», затем сам
 ответ.
@@ -74,9 +77,12 @@ The most reliable way is the command:
 /kb_ask how to configure the restaurant cash register
 ```
 
-You can also @mention the bot (`@dodo_kb_bot your question`) or reply to one of
-its messages. If it doesn't react to a mention, use `/kb_ask` — that always
-works.
+You can also **reply** to any of the bot's messages — no command needed, just
+put your question in the reply.
+
+An @mention in plain text (`@dodo_kb_bot your question`) doesn't work in every
+chat — it depends on the bot's settings there. If it stays silent on a mention,
+use `/kb_ask` or a reply.
 
 An answer takes 10–20 seconds: first you'll get "Searching the Knowledge
 Base…", then the answer itself.

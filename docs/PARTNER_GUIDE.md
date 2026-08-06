@@ -1,18 +1,15 @@
 # Справка для партнёров
 
-Этот же текст бот выдаёт по команде `/kb_info` — она берёт его из
-`main.TEXTS["info"]`, так что править нужно там, а этот файл держать в
-соответствии.
+Этот текст бот выдаёт по команде `/kb_info`; источник — `main.TEXTS["info"]`,
+править нужно там, а файл держать в соответствии.
 
 ## Русская версия
 
 ```
-Dodo KB — бот по Базе Знаний Dodo.
+Бот Базы Знаний (@dodo_kb_bot) — отвечает на вопросы по Базе Знаний Dodo.
 
-Как спросить (в этом чате):
-• @dodo_kb_bot как настроить кассу ресторана
-• /kb_ask как настроить кассу ресторана
-• реплай на любое сообщение бота
+Как спросить в этом чате:
+/kb_ask как настроить кассу ресторана
 
 Что придёт: короткий ответ по существу и ссылки на статьи, за 10–20 секунд.
 Отвечает на языке вопроса и только по Базе Знаний — если материала нет, скажет
@@ -25,12 +22,11 @@ Dodo KB — бот по Базе Знаний Dodo.
 ## English version
 
 ```
-Dodo KB — the Dodo Knowledge Base bot.
+Knowledge Base bot (@dodo_kb_bot) — answers questions from the Dodo Knowledge
+Base.
 
-How to ask (in this chat):
-• @dodo_kb_bot how long can dough balls be stored?
-• /kb_ask how long can dough balls be stored?
-• reply to any message from the bot
+How to ask in this chat:
+/kb_ask how to configure the restaurant cash register
 
 What you get: a short answer plus links to the source articles, in 10–20
 seconds. It replies in the language of your question and only from the Knowledge
@@ -42,5 +38,7 @@ each question self-contained — the bot doesn't remember previous messages.
 
 Язык выбирается по `language_code` профиля Telegram того, кто вызвал команду.
 
-`@упоминание` требует выключенного Group Privacy Mode (см. README) — `/kb_ask`
-и реплай работают в любом случае.
+В справке намеренно указан только `/kb_ask`: `@упоминание` до бота не доходит,
+пока включён Group Privacy Mode (см. README), а обещать партнёрам нерабочий
+способ нельзя. Когда privacy отключат и бота заново добавят в чат — добавить в
+`main.TEXTS["info"]` строку с упоминанием.

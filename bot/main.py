@@ -53,22 +53,18 @@ TEXTS = {
     },
     "info": {
         "ru": (
-            "Dodo KB — бот по Базе Знаний Dodo.\n\n"
-            "Как спросить (в этом чате):\n"
-            "• @dodo_kb_bot как настроить кассу ресторана\n"
-            "• /kb_ask как настроить кассу ресторана\n"
-            "• реплай на любое сообщение бота\n\n"
+            "Бот Базы Знаний (@dodo_kb_bot) — отвечает на вопросы по Базе Знаний Dodo.\n\n"
+            "Как спросить в этом чате:\n"
+            "/kb_ask как настроить кассу ресторана\n\n"
             "Что придёт: короткий ответ по существу и ссылки на статьи, за 10–20 секунд. "
             "Отвечает на языке вопроса и только по Базе Знаний — если материала нет, скажет прямо.\n\n"
             "Советы: один конкретный вопрос за раз; называйте страну («в Сербии»); "
             "каждый вопрос формулируйте целиком — предыдущие сообщения бот не помнит."
         ),
         "en": (
-            "Dodo KB — the Dodo Knowledge Base bot.\n\n"
-            "How to ask (in this chat):\n"
-            "• @dodo_kb_bot how long can dough balls be stored?\n"
-            "• /kb_ask how long can dough balls be stored?\n"
-            "• reply to any message from the bot\n\n"
+            "Knowledge Base bot (@dodo_kb_bot) — answers questions from the Dodo Knowledge Base.\n\n"
+            "How to ask in this chat:\n"
+            "/kb_ask how to configure the restaurant cash register\n\n"
             "What you get: a short answer plus links to the source articles, in 10–20 seconds. "
             "It replies in the language of your question and only from the Knowledge Base — "
             "if there is nothing on the topic, it says so.\n\n"

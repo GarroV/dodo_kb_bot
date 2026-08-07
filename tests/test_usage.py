@@ -80,3 +80,41 @@ def test_summarize_backfills_cost_for_old_records(usage_file):
 def test_summarize_skips_broken_lines(usage_file):
     usage_file.write_text("не JSON\n", encoding="utf-8")
     assert usage.summarize()["transactions"] == 0
+
+
+def test_records_chat_so_usage_can_be_audited_later(usage_file):
+    usage.record(
+        telegram_id=1, user_name="Аня", model="gpt-5.6-luna",
+        prompt_tokens=1_000, completion_tokens=100, total_tokens=1_100,
+        rounds=1, ok=True, cached_prompt_tokens=0,
+        chat_id=-1001, chat_title="Сербия — партнёры",
+    )
+    entry = json.loads(usage_file.read_text(encoding="utf-8").strip())
+    assert entry["chat_id"] == -1001
+    assert entry["chat_title"] == "Сербия — партнёры"
+
+
+def test_summarize_groups_by_chat(usage_file):
+    for chat_id, title in [(-1001, "Сербия"), (-1001, "Сербия"), (-1002, "Казахстан")]:
+        usage.record(
+            telegram_id=1, user_name="Аня", model="gpt-5.6-luna",
+            prompt_tokens=1_000, completion_tokens=100, total_tokens=1_100,
+            rounds=1, ok=True, cached_prompt_tokens=0,
+            chat_id=chat_id, chat_title=title,
+        )
+    by_chat = usage.summarize()["by_chat"]
+    assert by_chat["Сербия (-1001)"]["transactions"] == 2
+    assert by_chat["Казахстан (-1002)"]["transactions"] == 1
+
+
+def test_old_records_without_chat_are_skipped_in_chat_breakdown(usage_file):
+    # Записи до появления chat_id не должны ломать разбивку по чатам.
+    old = {
+        "ts": 1, "telegram_id": 1, "user_name": "Аня", "model": "gpt-5.6-luna",
+        "prompt_tokens": 1_000, "completion_tokens": 100, "total_tokens": 1_100,
+        "rounds": 1, "ok": True,
+    }
+    usage_file.write_text(json.dumps(old, ensure_ascii=False) + "\n", encoding="utf-8")
+    stats = usage.summarize()
+    assert stats["transactions"] == 1
+    assert stats["by_chat"] == {}

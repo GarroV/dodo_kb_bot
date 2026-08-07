@@ -47,11 +47,18 @@ def record(
     rounds: int,
     ok: bool,
     cached_prompt_tokens: int = 0,
+    chat_id: int | None = None,
+    chat_title: str | None = None,
 ) -> None:
     entry = {
         "ts": time.time(),
         "telegram_id": telegram_id,
         "user_name": user_name,
+        # Чат пишем, чтобы позже можно было посмотреть, где бот реально
+        # используется: логи контейнера пересборку не переживают, а этот файл
+        # лежит в volume.
+        "chat_id": chat_id,
+        "chat_title": chat_title,
         "model": model,
         "prompt_tokens": prompt_tokens,
         "cached_prompt_tokens": cached_prompt_tokens,
@@ -74,7 +81,10 @@ def record(
 def summarize() -> dict[str, Any]:
     path = Path(config.USAGE_FILE)
     if not path.exists():
-        return {"transactions": 0, "failed": 0, "total_tokens": 0, "cached_tokens": 0, "cost_usd": 0.0, "by_user": {}}
+        return {
+            "transactions": 0, "failed": 0, "total_tokens": 0, "cached_tokens": 0,
+            "cost_usd": 0.0, "by_user": {}, "by_chat": {},
+        }
 
     transactions = 0
     failed = 0
@@ -82,6 +92,7 @@ def summarize() -> dict[str, Any]:
     cached_tokens = 0
     cost_usd = 0.0
     by_user: dict[str, dict[str, float]] = {}
+    by_chat: dict[str, dict[str, float]] = {}
 
     with path.open(encoding="utf-8") as f:
         for line in f:
@@ -114,6 +125,13 @@ def summarize() -> dict[str, Any]:
             stat["total_tokens"] += entry.get("total_tokens", 0)
             stat["cost_usd"] += entry_cost
 
+            chat_id = entry.get("chat_id")
+            if chat_id is not None:
+                chat_key = f"{entry.get('chat_title') or 'без названия'} ({chat_id})"
+                chat_stat = by_chat.setdefault(chat_key, {"transactions": 0, "cost_usd": 0.0})
+                chat_stat["transactions"] += 1
+                chat_stat["cost_usd"] += entry_cost
+
     return {
         "transactions": transactions,
         "failed": failed,
@@ -121,4 +139,5 @@ def summarize() -> dict[str, Any]:
         "cached_tokens": cached_tokens,
         "cost_usd": cost_usd,
         "by_user": by_user,
+        "by_chat": by_chat,
     }

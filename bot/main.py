@@ -196,6 +196,12 @@ async def cmd_stats(message: types.Message) -> None:
             lines.append(
                 f"  {name}: {s['transactions']} тр., {s['total_tokens']} ток., ${s['cost_usd']:.4f}"
             )
+    if stats["by_chat"]:
+        lines.append("")
+        lines.append("По чатам:")
+        by_cost = sorted(stats["by_chat"].items(), key=lambda kv: -kv[1]["cost_usd"])
+        for title, s in by_cost:
+            lines.append(f"  {title}: {s['transactions']} тр., ${s['cost_usd']:.4f}")
     await message.answer("\n".join(lines))
 
 
@@ -244,6 +250,8 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
             rounds=result.rounds,
             ok=True,
             cached_prompt_tokens=result.cached_prompt_tokens,
+            chat_id=message.chat.id,
+            chat_title=message.chat.title,
         )
         answer_text = result.text
     except Exception:
@@ -257,6 +265,8 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
             total_tokens=0,
             rounds=0,
             ok=False,
+            chat_id=message.chat.id,
+            chat_title=message.chat.title,
         )
         answer_text = _t("error", lang)
 

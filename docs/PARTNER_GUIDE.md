@@ -1,7 +1,9 @@
 # Справка для партнёров
 
-Этот текст бот выдаёт по команде `/kb_info`; источник — `main.TEXTS["info"]`,
-править нужно там, а файл держать в соответствии.
+Этот текст бот выдаёт по команде `/kb_info`. Канонический источник —
+`main.TEXTS["info"]` в коде; здесь копия для чтения без запуска бота.
+Расхождение между ними ловит тест `tests/test_docs_in_sync.py`, так что править
+надо код, а этот файл приводить в соответствие.
 
 ## Русская версия
 
@@ -18,8 +20,9 @@
 Советы: один конкретный вопрос за раз; называйте страну («в Сербии»); каждый
 вопрос формулируйте целиком — предыдущие сообщения бот не помнит.
 
-Бот не читает сообщения группы и реагирует только на команду. По этой же
-причине не срабатывает упоминание через собаку — обращайтесь через /kb_ask.
+Бот не читает переписку в группе — он видит только обращения к нему: команду
+/kb_ask и ответы (реплаи) на его собственные сообщения. Упоминание через собаку
+он не получает вообще, поэтому на него не отвечает.
 ```
 
 ## English version
@@ -38,8 +41,9 @@ Base — if there is nothing on the topic, it says so.
 Tips: ask one specific question at a time; name the country ("in Serbia"); make
 each question self-contained — the bot doesn't remember previous messages.
 
-The bot does not read the group's messages and only reacts to the command. For
-the same reason an @mention does not work — use /kb_ask.
+The bot does not read the group conversation — it only sees messages addressed
+to it: the /kb_ask command and replies to its own messages. An @mention never
+reaches it, which is why it stays silent on those.
 ```
 
 Язык выбирается по `language_code` профиля Telegram того, кто вызвал команду.

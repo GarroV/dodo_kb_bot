@@ -214,6 +214,13 @@ async def _answer_and_reply(message: types.Message, text: str) -> None:
         log.info("[access] чат не в списке разрешённых: chat_id=%s", message.chat.id)
         return
 
+    # chat_id в логе — единственный способ узнать id чата, чтобы вписать его в
+    # ALLOWED_CHAT_IDS: в интерфейсе Telegram он не показывается.
+    log.info(
+        "[ask] chat_id=%s chat=%s from_id=%s",
+        message.chat.id, message.chat.title or message.chat.type, user_id,
+    )
+
     denied = _throttle.check(user_id, message.chat.id)
     if denied:
         log.info("[limit] %s: from_id=%s chat_id=%s", denied, user_id, message.chat.id)

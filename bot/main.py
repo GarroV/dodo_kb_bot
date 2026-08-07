@@ -1,12 +1,16 @@
-"""Telegram-бот-прослойка к Базе Знаний Dodo Pizza для партнёров (long polling, aiogram 3).
+"""Telegram-бот-прослойка к Базе Знаний Dodo Pizza (long polling, aiogram 3).
 
 Партнёры не получают ни личный логин, ни MCP-токен от Базы Знаний — единственная
-точка входа это этот бот с одним сервисным PAT (см. config.KB_MCP_TOKEN,
-mcp_client.py). Доступа по списку нет, но личка для вопросов закрыта — бот
-отвечает только в групповых чатах, куда его добавили: по @упоминанию, reply
-или командой /kb_ask (команда доходит всегда, даже если у бота включён Group
-Privacy Mode и обычный текст с упоминанием Telegram до бота не доводит).
-Контроль доступа на уровне того, кто добавляет бота в чат, не на уровне бота.
+точка входа это бот с одним сервисным read-only PAT (см. config.KB_MCP_TOKEN,
+mcp_client.py).
+
+Границы доступа:
+  * личка закрыта для вопросов — бот работает в групповых чатах;
+  * в группе реагирует только на явное обращение: /kb_ask, reply на своё
+    сообщение или @упоминание (последнее доходит лишь при выключенном Group
+    Privacy Mode) — остальную переписку не обрабатывает, см. group_gate.py;
+  * ALLOWED_CHAT_IDS, если задан, ограничивает список чатов (limits.py);
+  * частота ограничена: каждый вопрос — это вызовы LLM, то есть деньги.
 """
 import asyncio
 import logging
@@ -17,6 +21,7 @@ from aiogram.utils.chat_action import ChatActionSender
 
 import config
 import group_gate
+import limits
 import llm
 import usage
 
@@ -78,6 +83,14 @@ TEXTS = {
             "it, which is why it stays silent on those."
         ),
     },
+    "cooldown": {
+        "ru": "Секунду — я ещё отвечаю на предыдущий вопрос. Повтори чуть позже.",
+        "en": "One moment — I'm still working on the previous question. Please try again shortly.",
+    },
+    "chat_limit": {
+        "ru": "В этом чате исчерпан лимит вопросов на час. Попробуй позже.",
+        "en": "This chat has reached its hourly question limit. Please try again later.",
+    },
     "error": {
         "ru": "Произошла ошибка при обращении к Базе Знаний. Попробуй ещё раз чуть позже.",
         "en": "Something went wrong while querying the Knowledge Base. Please try again a bit later.",
@@ -113,12 +126,30 @@ dp.startup.register(_on_startup)
 
 
 def _split_message(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
+    """Режет длинный ответ по границам строк. Резать вслепую по лимиту нельзя:
+    разрыв приходится в том числе на середину ссылки, и она перестаёт быть
+    кликабельной, а половина адреса выглядит как мусор."""
     if len(text) <= limit:
         return [text]
-    parts = []
-    while text:
-        parts.append(text[:limit])
-        text = text[limit:]
+
+    parts: list[str] = []
+    current = ""
+    for line in text.split("\n"):
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            parts.append(current)
+            current = ""
+        # Строка сама длиннее лимита (например гигантский URL) — только тогда
+        # режем посимвольно, иначе её вообще не отправить.
+        while len(line) > limit:
+            parts.append(line[:limit])
+            line = line[limit:]
+        current = line
+    if current:
+        parts.append(current)
     return parts
 
 
@@ -168,12 +199,26 @@ async def cmd_stats(message: types.Message) -> None:
     await message.answer("\n".join(lines))
 
 
+_throttle = limits.Throttle()
+
+
 async def _answer_and_reply(message: types.Message, text: str) -> None:
     """Прогоняет text через LLM, пишет usage и отвечает в чат — общий хвост
     для гейта по @упоминанию/reply и для команды /kb_ask."""
     user_id = message.from_user.id
     user_name = message.from_user.first_name or message.from_user.username or str(user_id)
     lang = llm.lang_of(text, message.from_user.language_code)
+
+    if not limits.is_chat_allowed(message.chat.id):
+        # Молча: в неразрешённом чате бот не должен даже подтверждать, что жив.
+        log.info("[access] чат не в списке разрешённых: chat_id=%s", message.chat.id)
+        return
+
+    denied = _throttle.check(user_id, message.chat.id)
+    if denied:
+        log.info("[limit] %s: from_id=%s chat_id=%s", denied, user_id, message.chat.id)
+        await message.answer(_t(denied, lang))
+        return
 
     # Поиск по Базе Знаний занимает несколько секунд (несколько раундов
     # tool-calling) — короткая отбивка, чтобы не выглядело, будто бот завис.

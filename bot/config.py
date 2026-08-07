@@ -25,3 +25,21 @@ USAGE_FILE = os.environ.get("USAGE_FILE", "/app/data/usage.jsonl")
 # Кому отвечает /stats. Не задан — команда молчит для всех (безопасный дефолт).
 _admin_id = os.environ.get("ADMIN_TELEGRAM_ID")
 ADMIN_TELEGRAM_ID = int(_admin_id) if _admin_id else None
+
+
+def _int_set(name: str) -> frozenset[int]:
+    raw = os.environ.get(name, "")
+    return frozenset(int(p) for p in raw.replace(",", " ").split() if p.strip())
+
+
+# Чаты, в которых боту разрешено отвечать (id через запятую). Пусто — отвечает в
+# любом чате, куда его добавили; тогда единственная граница доступа к Базе
+# Знаний — кто именно добавляет бота. Список стоит задать, если бот может
+# оказаться в чужом чате.
+ALLOWED_CHAT_IDS = _int_set("ALLOWED_CHAT_IDS")
+
+# Ограничение частоты: защита от случайного и намеренного спама вопросами —
+# каждый вопрос это несколько вызовов LLM, то есть реальные деньги и минуты
+# работы. Пауза между вопросами одного пользователя и потолок на чат в час.
+USER_COOLDOWN_SECONDS = int(os.environ.get("USER_COOLDOWN_SECONDS", "10"))
+CHAT_HOURLY_LIMIT = int(os.environ.get("CHAT_HOURLY_LIMIT", "60"))

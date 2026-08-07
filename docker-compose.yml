@@ -15,6 +15,13 @@ services:
       USAGE_FILE: /app/data/usage.jsonl
       # Кому отвечает /stats (счётчик транзакций/токенов). Не задан — команда молчит всем.
       ADMIN_TELEGRAM_ID: ${ADMIN_TELEGRAM_ID:-}
+      # Чаты, где боту разрешено отвечать (id через запятую). Пусто — любой чат,
+      # куда его добавили.
+      ALLOWED_CHAT_IDS: ${ALLOWED_CHAT_IDS:-}
+      # Ограничение частоты: пауза между вопросами одного пользователя и потолок
+      # вопросов на чат в час.
+      USER_COOLDOWN_SECONDS: ${USER_COOLDOWN_SECONDS:-10}
+      CHAT_HOURLY_LIMIT: ${CHAT_HOURLY_LIMIT:-60}
     volumes:
       # Счётчик транзакций/токенов (usage.jsonl) — именованный volume, переживает
       # docker compose up --build (пересборка образа volume не трогает).

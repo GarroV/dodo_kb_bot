@@ -60,12 +60,11 @@ def test_non_json_payload_passes_through():
     assert mcp_client._compact_json("не JSON") == "не JSON"
 
 
-# --- Устойчивость к антибот-защите перед Базой Знаний -------------------------
+# --- Устойчивость к отказам Базы Знаний ---------------------------------------
 #
 # Инцидент 09.09.2026: партнёр спросил про ТВ-борды по-английски, три вызова
-# get_content подряд получили HTML-страницу 403 от защиты по частоте запросов,
-# и бот сообщил, что не смог прочитать статьи. Замер: без пауз отказ приходит
-# на 11-м запросе, блокировка снимается за ≤5 секунд — то есть повтор спасает.
+# get_content подряд упёрлись в ограничение частоты на стороне Базы Знаний,
+# и бот сообщил, что не смог прочитать статьи. Отказ короткий — повтор спасает.
 
 import asyncio
 import types
@@ -131,7 +130,7 @@ def _no_waiting(monkeypatch):
     monkeypatch.setattr(mcp_client, "RETRY_DELAY_SECONDS", 0)
 
 
-def test_forbidden_from_the_bot_shield_is_retried():
+def test_rate_limit_refusal_is_retried():
     session, state = _session_over([_grouped(_http_error(403)), _ok_result()])
     result = asyncio.run(session.call_tool("get_content", {"articleId": "a-1"}))
     assert '"ok": true' in result
@@ -168,7 +167,7 @@ def test_one_connection_serves_several_calls():
 
 
 def test_cause_hidden_behind_cancellation_is_still_retried():
-    """Под блокировкой запрос не падает с 403 напрямую: MCP держит соединение в
+    """При отказе запрос не падает с ошибкой HTTP напрямую: MCP держит соединение в
     своей task group, она отменяет ожидающий вызов, и наружу выходит
     CancelledError. Настоящая причина всплывает только при закрытии соединения —
     проверено смоуком на сервере, где первая версия ретрая из-за этого не сработала.
@@ -180,7 +179,7 @@ def test_cause_hidden_behind_cancellation_is_still_retried():
     async def fake_open(self):
         state["opened"] += 1
         state["client"] = _FakeClient(remaining)
-        # Закрытие оборванного соединения отдаёт настоящую причину — 403 от защиты.
+        # Закрытие оборванного соединения отдаёт настоящую причину — отказ сервера.
         stack = types.SimpleNamespace(
             aclose=_raising_aclose if state["opened"] == 1 else _clean_aclose
         )
@@ -200,7 +199,7 @@ async def _clean_aclose():
     return None
 
 
-def test_real_cancellation_is_not_mistaken_for_the_shield():
+def test_real_cancellation_is_not_mistaken_for_a_refusal():
     """Отмена без транзиентной причины — это настоящая отмена задачи
     (снятие хендлера, таймаут), её повторять нельзя."""
     session = mcp_client.Session()
@@ -218,7 +217,7 @@ def test_real_cancellation_is_not_mistaken_for_the_shield():
 
 def test_tool_list_is_retried_too():
     """Список инструментов запрашивается перед первым вопросом и своим отдельным
-    соединением — под блокировкой он падал раньше, чем дело доходило до поиска,
+    соединением — при отказе он падал раньше, чем дело доходило до поиска,
     и валил весь ответ (найдено смоуком на сервере)."""
     session = mcp_client.Session()
     state = {"opened": 0}

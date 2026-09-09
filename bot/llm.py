@@ -261,8 +261,8 @@ async def answer_question(question: str, lang: str | None = None) -> Answer:
     prompt_tokens = completion_tokens = total_tokens = cached_prompt_tokens = 0
     rounds_used = 0
 
-    # Одно соединение на весь ответ: каждое открытие стоит трёх HTTP-запросов
-    # к Базе Знаний, а её защита ловит именно плотность запросов
+    # Одно соединение на весь ответ: каждое открытие стоит нескольких запросов
+    # к Базе Знаний, а её ограничение частоты ловит именно их плотность
     # (см. mcp_client.Session).
     async with mcp_client.session() as kb:
         for round_no in range(MAX_ROUNDS):

@@ -261,77 +261,91 @@ async def answer_question(question: str, lang: str | None = None) -> Answer:
     prompt_tokens = completion_tokens = total_tokens = cached_prompt_tokens = 0
     rounds_used = 0
 
-    for round_no in range(MAX_ROUNDS):
-        rounds_used = round_no + 1
-        response = await _client.chat.completions.create(
-            model=config.OPENAI_MODEL,
-            messages=messages,
-            tools=tools,
-            tool_choice="required" if round_no == 0 else "auto",
-            # max_completion_tokens, а не max_tokens: модели gpt-5* последний
-            # параметр не принимают вообще (400 unsupported_parameter), а
-            # gpt-4o-семейство понимает оба — так конфиг модели остаётся
-            # свободно переключаемым через OPENAI_MODEL.
-            max_completion_tokens=1500,
-            # Без явной temperature модель работает на 1.0, и один и тот же вопрос
-            # давал разные ответы (разные статьи, разный порядок) — партнёры это
-            # видят как «бот отвечает по-разному в разных чатах». Для справочного
-            # бота предсказуемость важнее вариативности.
-            temperature=0,
-            **_model_extra_kwargs(config.OPENAI_MODEL),
-        )
-        if response.usage:
-            prompt_tokens += response.usage.prompt_tokens
-            completion_tokens += response.usage.completion_tokens
-            total_tokens += response.usage.total_tokens
-            details = getattr(response.usage, "prompt_tokens_details", None)
-            cached_prompt_tokens += getattr(details, "cached_tokens", 0) or 0
-
-        message = response.choices[0].message
-        tool_calls = message.tool_calls
-
-        if not tool_calls:
-            return Answer(
-                text=_normalize_labels(
-                    _to_plain_text(
-                        _sanitize_links(
-                            message.content or "Не нашёл ответа в Базе Знаний.", "\n".join(tool_outputs)
-                        )
-                    ),
-                    lang,
-                ),
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens,
-                rounds=rounds_used,
-                cached_prompt_tokens=cached_prompt_tokens,
+    # Одно соединение на весь ответ: каждое открытие стоит трёх HTTP-запросов
+    # к Базе Знаний, а её защита ловит именно плотность запросов
+    # (см. mcp_client.Session).
+    async with mcp_client.session() as kb:
+        for round_no in range(MAX_ROUNDS):
+            rounds_used = round_no + 1
+            response = await _client.chat.completions.create(
+                model=config.OPENAI_MODEL,
+                messages=messages,
+                tools=tools,
+                tool_choice="required" if round_no == 0 else "auto",
+                # max_completion_tokens, а не max_tokens: модели gpt-5* последний
+                # параметр не принимают вообще (400 unsupported_parameter), а
+                # gpt-4o-семейство понимает оба — так конфиг модели остаётся
+                # свободно переключаемым через OPENAI_MODEL.
+                max_completion_tokens=1500,
+                # Без явной temperature модель работает на 1.0, и один и тот же вопрос
+                # давал разные ответы (разные статьи, разный порядок) — партнёры это
+                # видят как «бот отвечает по-разному в разных чатах». Для справочного
+                # бота предсказуемость важнее вариативности.
+                temperature=0,
+                **_model_extra_kwargs(config.OPENAI_MODEL),
             )
+            if response.usage:
+                prompt_tokens += response.usage.prompt_tokens
+                completion_tokens += response.usage.completion_tokens
+                total_tokens += response.usage.total_tokens
+                details = getattr(response.usage, "prompt_tokens_details", None)
+                cached_prompt_tokens += getattr(details, "cached_tokens", 0) or 0
 
-        messages.append({
-            "role": "assistant",
-            "content": message.content,
-            "tool_calls": [tc.model_dump() for tc in tool_calls],
-        })
+            message = response.choices[0].message
+            tool_calls = message.tool_calls
 
-        for tc in tool_calls:
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-                if tc.function.name == "search_content":
-                    args["limit"] = min(args.get("limit") or SEARCH_CONTENT_MAX_LIMIT, SEARCH_CONTENT_MAX_LIMIT)
-                result = await mcp_client.call_tool(tc.function.name, args)
-            except Exception:
-                # Полная трассировка — только в серверный лог. В модель (и потенциально
-                # в ответ партнёру) уходит нейтральный текст: сырое исключение может
-                # содержать внутренние детали (URL, структура запроса и т.п.).
-                log.exception("Ошибка вызова инструмента %s", tc.function.name)
-                result = "Инструмент временно недоступен. Попробуй переформулировать запрос."
-            # Контент KB не пишем в лог целиком — это чужие корпоративные данные под
-            # доступом по allowlist'у, а докер-логи читает более широкий круг людей.
-            log.info("[tool] %s args_len=%d result_len=%d", tc.function.name, len(tc.function.arguments or ""), len(result))
-            limit = MAX_ARTICLE_CHARS if tc.function.name == "get_content" else MAX_TOOL_RESULT_CHARS
-            truncated = _truncate(result, limit)
-            tool_outputs.append(truncated)
-            messages.append({"role": "tool", "tool_call_id": tc.id, "content": truncated})
+            if not tool_calls:
+                return Answer(
+                    text=_normalize_labels(
+                        _to_plain_text(
+                            _sanitize_links(
+                                message.content or "Не нашёл ответа в Базе Знаний.", "\n".join(tool_outputs)
+                            )
+                        ),
+                        lang,
+                    ),
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                    rounds=rounds_used,
+                    cached_prompt_tokens=cached_prompt_tokens,
+                )
+
+            messages.append({
+                "role": "assistant",
+                "content": message.content,
+                "tool_calls": [tc.model_dump() for tc in tool_calls],
+            })
+
+            for tc in tool_calls:
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                    if tc.function.name == "search_content":
+                        args["limit"] = min(args.get("limit") or SEARCH_CONTENT_MAX_LIMIT, SEARCH_CONTENT_MAX_LIMIT)
+                    result = await kb.call_tool(tc.function.name, args)
+                except Exception:
+                    # Полная трассировка — только в серверный лог. В модель (и потенциально
+                    # в ответ партнёру) уходит нейтральный текст: сырое исключение может
+                    # содержать внутренние детали (URL, структура запроса и т.п.).
+                    log.exception("Ошибка вызова инструмента %s", tc.function.name)
+                    # Прежний текст («попробуй переформулировать запрос») модель читала
+                    # как «такого материала нет» и сообщала партнёру, что статей не
+                    # нашлось, — хотя вызов просто не дошёл. Инцидент 09.09.2026.
+                    result = (
+                        "Сбой связи с Базой Знаний при этом вызове — автоматические повторы "
+                        "уже исчерпаны. Это сбой соединения, а не признак того, что материала "
+                        "нет: переформулировка запроса тут не поможет. Попробуй другой вызов, "
+                        "а если не проходят и остальные — скажи партнёру, что База Знаний "
+                        "сейчас недоступна и стоит повторить вопрос через несколько минут. "
+                        "Не выдавай этот сбой за отсутствие статей."
+                    )
+                # Контент KB не пишем в лог целиком — это чужие корпоративные данные под
+                # доступом по allowlist'у, а докер-логи читает более широкий круг людей.
+                log.info("[tool] %s args_len=%d result_len=%d", tc.function.name, len(tc.function.arguments or ""), len(result))
+                limit = MAX_ARTICLE_CHARS if tc.function.name == "get_content" else MAX_TOOL_RESULT_CHARS
+                truncated = _truncate(result, limit)
+                tool_outputs.append(truncated)
+                messages.append({"role": "tool", "tool_call_id": tc.id, "content": truncated})
 
     return Answer(
         text="Не удалось получить ответ за отведённое число шагов — попробуй переформулировать вопрос.",
